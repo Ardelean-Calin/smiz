@@ -21,17 +21,15 @@ pub fn StateMachine(comptime sm_skeleton: anytype) type {
     };
 
     // Optional fields
-    // If I specify a handler, I extract it, otherwise I put null
+    // If I specify a handler, I will generate code that uses it on event transition
     const handler_present = @hasField(T, "handler");
-    const HandlerType = if (handler_present) @TypeOf(@field(sm_skeleton, "handler")) else ?void;
-    const handler_default = if (handler_present) @field(sm_skeleton, "handler") else null;
+    const handler_function = if (handler_present) @field(sm_skeleton, "handler") else null;
 
     // Transitions and initial_state are required fields.
     return struct {
         transitions: []const TransitionType = @field(sm_skeleton, "transitions"),
         internal: struct {
             current_state: StateType = @field(sm_skeleton, "initial_state"),
-            handler: HandlerType = handler_default,
         } = undefined,
 
         const Self = @This();
@@ -52,7 +50,7 @@ pub fn StateMachine(comptime sm_skeleton: anytype) type {
                         if (transition.event == event) {
                             // Call the event handler
                             if (handler_present) {
-                                self.internal.handler.onTransition(self.internal.current_state, transition.to, transition.event);
+                                @call(.auto, handler_function, .{ transition.from, transition.to, transition.event });
                             }
 
                             self.internal.current_state = transition.to;
@@ -64,7 +62,7 @@ pub fn StateMachine(comptime sm_skeleton: anytype) type {
                     } else {
                         if (handler_present) {
                             // Events are unused so we don't need our handler to have event parameter
-                            self.internal.handler.onTransition(self.internal.current_state, transition.to);
+                            @call(.auto, handler_function, .{ transition.from, transition.to });
                         }
 
                         self.internal.current_state = transition.to;
@@ -112,10 +110,9 @@ test "Basic State Machine interface no Event with Handler" {
     const Handler = struct {
         var count: u32 = 0;
 
-        pub fn onTransition(self: @This(), from: State, to: State) void {
+        pub fn onTransition(from: State, to: State) void {
             _ = to;
             _ = from;
-            _ = self;
             count += 1;
         }
     };
@@ -131,7 +128,7 @@ test "Basic State Machine interface no Event with Handler" {
             .{ .from = .parsing, .to =   .sleep },
         },
         // Optional transition handler
-        .handler = &Handler{},
+        .handler = &Handler.onTransition,
     }){};
     // zig fmt: on
 
@@ -191,8 +188,7 @@ test "Basic State Machine interface with Event and handler" {
         var transitions = std.ArrayList(TransitionType).init(std.testing.allocator);
 
         /// Simple transition handler which counts all events!
-        pub fn onTransition(self: @This(), from: State, to: State, event: ?Event) void {
-            _ = self;
+        pub fn onTransition(from: State, to: State, event: ?Event) void {
             transitions.append(.{ .from = from, .to = to, .event = event }) catch unreachable;
             if (event) |e| {
                 switch (e) {
@@ -218,7 +214,7 @@ test "Basic State Machine interface with Event and handler" {
             .{ .event =   .pop, .from = .waiting, .to = .parsing },
             .{ .event =   null, .from = .parsing, .to =   .sleep },
         },
-        .handler = &Handler{},
+        .handler = &Handler.onTransition,
     }){};
     // zig fmt: on
 
