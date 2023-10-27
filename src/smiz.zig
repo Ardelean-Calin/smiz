@@ -42,32 +42,25 @@ pub fn StateMachine(comptime sm_skeleton: anytype) type {
         }
 
         pub fn stepWithEvent(self: *Self, event: EventType) !void {
-            // Here I unwrap the transition table
-            for (self.transitions) |transition| {
-                if (self.internal.current_state == transition.from) {
-                    // Check if we take events into account.
-                    if (event_present) {
-                        if (transition.event == event) {
-                            // Call the event handler
-                            if (handler_present) {
-                                @call(.auto, handler_function, .{ transition.from, transition.to, transition.event });
-                            }
-
-                            self.internal.current_state = transition.to;
-                            return;
-                        } else {
-                            // Error in case of invalid event.
-                            return StateMachineError.InvalidTransition;
-                        }
-                    } else {
-                        if (handler_present) {
-                            // Events are unused so we don't need our handler to have event parameter
-                            @call(.auto, handler_function, .{ transition.from, transition.to });
-                        }
-
-                        self.internal.current_state = transition.to;
-                        return;
+            // Basically create two if cases for every transition:
+            // One which checks that both state and event are ok
+            // One which only checks the state
+            inline for (@field(sm_skeleton, "transitions")) |transition| {
+                if (transition.from == self.internal.current_state and event_present and transition.event == event) {
+                    if (handler_present) {
+                        @call(.auto, handler_function, .{ transition.from, transition.to, transition.event });
                     }
+
+                    self.internal.current_state = transition.to;
+                    return;
+                }
+                if (transition.from == self.internal.current_state and !event_present) {
+                    if (handler_present) {
+                        // Events are unused so we don't need our handler to have event parameter
+                        @call(.auto, handler_function, .{ transition.from, transition.to });
+                    }
+                    self.internal.current_state = transition.to;
+                    return;
                 }
             }
 
@@ -260,23 +253,35 @@ test "more complicated state machine" {
         TimerExpired,
     };
 
-    var sm = StateMachine(
+    // zig fmt: off
+    var sm2 = StateMachine(
         .{
             .state_type = State2,
             .event_type = Event2,
             .initial_state = .Sleeping,
             .transitions = &.{
-                .{ .event = .MeasTemp, .from = .Sleeping, .to = .Measuring },
-                .{ .event = .MeasMoisture, .from = .Sleeping, .to = .Measuring },
-                .{ .event = .MeasBoth, .from = .Sleeping, .to = .Measuring },
+                .{ .event = .MeasTemp,     .from = .Sleeping,  .to = .Measuring },
+                .{ .event = .MeasMoisture, .from = .Sleeping,  .to = .Measuring },
+                .{ .event = .MeasBoth,     .from = .Sleeping,  .to = .Measuring },
                 .{ .event = .TimerExpired, .from = .Measuring, .to = .Sleeping },
             },
         },
     ){};
-    try std.testing.expectEqual(sm.getState(), .Sleeping);
+    // zig fmt: on
+    try std.testing.expectEqual(sm2.getState(), .Sleeping);
 
-    try sm.stepWithEvent(.MeasTemp);
-    try std.testing.expectEqual(sm.getState(), .Measuring);
-    try sm.stepWithEvent(.TimerExpired);
-    try std.testing.expectEqual(sm.getState(), .Sleeping);
+    try sm2.stepWithEvent(.MeasTemp);
+    try std.testing.expectEqual(sm2.getState(), .Measuring);
+    try sm2.stepWithEvent(.TimerExpired);
+    try std.testing.expectEqual(sm2.getState(), .Sleeping);
+
+    try sm2.stepWithEvent(.MeasMoisture);
+    try std.testing.expectEqual(sm2.getState(), .Measuring);
+    try sm2.stepWithEvent(.TimerExpired);
+    try std.testing.expectEqual(sm2.getState(), .Sleeping);
+
+    try sm2.stepWithEvent(.MeasBoth);
+    try std.testing.expectEqual(sm2.getState(), .Measuring);
+    try sm2.stepWithEvent(.TimerExpired);
+    try std.testing.expectEqual(sm2.getState(), .Sleeping);
 }
