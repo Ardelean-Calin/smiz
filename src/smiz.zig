@@ -30,7 +30,7 @@ pub fn StateMachine(comptime sm_skeleton: anytype) type {
         transitions: []const TransitionType = @field(sm_skeleton, "transitions"),
         internal: struct {
             current_state: StateType = @field(sm_skeleton, "initial_state"),
-        } = undefined,
+        } = .{},
 
         const Self = @This();
         pub fn getState(self: Self) StateType {
@@ -246,4 +246,37 @@ test "Basic State Machine interface with Event and handler" {
         .{ .event = .pop, .from = .waiting, .to = .parsing },
         .{ .event = null, .from = .parsing, .to = .sleep },
     }, Handler.transitions.items);
+}
+
+test "more complicated state machine" {
+    const State2 = enum {
+        Measuring,
+        Sleeping,
+    };
+    const Event2 = enum {
+        MeasTemp,
+        MeasMoisture,
+        MeasBoth,
+        TimerExpired,
+    };
+
+    var sm = StateMachine(
+        .{
+            .state_type = State2,
+            .event_type = Event2,
+            .initial_state = .Sleeping,
+            .transitions = &.{
+                .{ .event = .MeasTemp, .from = .Sleeping, .to = .Measuring },
+                .{ .event = .MeasMoisture, .from = .Sleeping, .to = .Measuring },
+                .{ .event = .MeasBoth, .from = .Sleeping, .to = .Measuring },
+                .{ .event = .TimerExpired, .from = .Measuring, .to = .Sleeping },
+            },
+        },
+    ){};
+    try std.testing.expectEqual(sm.getState(), .Sleeping);
+
+    try sm.stepWithEvent(.MeasTemp);
+    try std.testing.expectEqual(sm.getState(), .Measuring);
+    try sm.stepWithEvent(.TimerExpired);
+    try std.testing.expectEqual(sm.getState(), .Sleeping);
 }
