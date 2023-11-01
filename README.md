@@ -7,7 +7,7 @@ Transition event handlers are also supported.
 
 ### Example
 
-The simplest FSM has no events and no transition handler:
+A simple state machine without events and without a transition handler:
 
 ```zig
 const fsm = @import("smiz");
@@ -33,13 +33,61 @@ try sm.step();
 try std.testing.expectEqual(sm.getState(), .waiting);
 ```
 
-A more complicated FSM also has an Event Type and *optionally* a transition event handler to do stuff on transition.
+A simple state machine without events but **with** a transition handler:
+
+```zig
+const fsm = @import("smiz");
+
+const State = enum { sleep, waiting, parsing };
+
+/// Called whenever a transition from one state to another takes place
+fn handler(from: State, to: State) {
+    // Check states and do stuff
+    if (from == .sleep and .to == .waiting){
+        // ...
+    }
+}
+
+var sm = fsm.StateMachine(.{
+    // Necessary type declarations
+    .state_type = State,
+    .initial_state = .sleep,
+    // Transition table
+    .transitions = &.{
+        .{ .from =   .sleep, .to = .waiting },
+        .{ .from = .waiting, .to = .parsing },
+        .{ .from = .parsing, .to =   .sleep },
+    },
+    // Optional transition handler
+    .handler = &handler,
+}){};
+
+
+try std.testing.expectEqual(sm.getState(), .sleep);
+// This is how we step without an event
+try sm.step();
+try std.testing.expectEqual(sm.getState(), .waiting);
+```
+
+A FSM with an Event Type and an **optional** transition event handler.
 
 ```zig
 const fsm = @import("smiz");
 
 const State = enum { sleep, waiting, parsing };
 const Event = enum { click };
+
+fn myTransitionHandler(from: State, to: State, event: ?Event) {
+    if (event.? == .click and from == .sleep) {
+        // do something
+    }
+    else if (event == null and to == .sleep) {
+        // do something else
+    } 
+    else {
+        // you get the point
+    }
+}
 
 var sm = fsm.StateMachine(.{
     // Necessary type declarations
@@ -52,6 +100,8 @@ var sm = fsm.StateMachine(.{
         .{ .event = .click, .from = .waiting, .to = .parsing },
         .{ .event =   null, .from = .parsing, .to =   .sleep },
     },
+    // Optional, can be omitted
+    .handler = &myTransitionHandler,
 }){};
 
 
@@ -65,3 +115,5 @@ try sm.stepWithEvent(.click); // ! ERROR
 try sm.stepWithEvent(null); // Correct! Alternatively you can simply .step()
 try std.testing.expectEqual(sm.getState(), .sleep);
 ```
+
+As you can see the `Event` can simply be a `null` value in case of no event.
