@@ -253,6 +253,18 @@ test "more complicated state machine" {
         TimerExpired,
     };
 
+    const Handler = struct {
+        var timer_expired: usize = 0;
+        /// Simple transition handler which counts all events!
+        pub fn onTransition(from: State2, to: State2, event: ?Event2) void {
+            _ = to;
+            _ = from;
+            if (event.? == .TimerExpired) {
+                timer_expired += 1;
+            }
+        }
+    };
+
     // zig fmt: off
     var sm2 = StateMachine(
         .{
@@ -265,10 +277,12 @@ test "more complicated state machine" {
                 .{ .event = .MeasBoth,     .from = .Sleeping,  .to = .Measuring },
                 .{ .event = .TimerExpired, .from = .Measuring, .to = .Sleeping },
             },
+            .handler = &Handler.onTransition,
         },
     ){};
     // zig fmt: on
     try std.testing.expectEqual(sm2.getState(), .Sleeping);
+    try std.testing.expectEqual(Handler.timer_expired, 0);
 
     try sm2.stepWithEvent(.MeasTemp);
     try std.testing.expectEqual(sm2.getState(), .Measuring);
@@ -284,4 +298,5 @@ test "more complicated state machine" {
     try std.testing.expectEqual(sm2.getState(), .Measuring);
     try sm2.stepWithEvent(.TimerExpired);
     try std.testing.expectEqual(sm2.getState(), .Sleeping);
+    try std.testing.expectEqual(Handler.timer_expired, 3);
 }
